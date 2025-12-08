@@ -2,9 +2,9 @@ package br.edu.ifpb.padroes.store;
 
 import br.edu.ifpb.padroes.customer.Customer;
 import br.edu.ifpb.padroes.customer.CustomerType;
-import br.edu.ifpb.padroes.music.AgeRestriction;
 import br.edu.ifpb.padroes.music.Album;
 import br.edu.ifpb.padroes.music.MediaType;
+import br.edu.ifpb.padroes.store.validators.*; // Importando os novos validadores
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -14,6 +14,18 @@ public class MusicStore {
 
     private List<Album> inventory = new ArrayList<>();
     private List<Customer> customers = new ArrayList<>();
+
+    // Campo pra segurar o início da corrente
+    private PurchaseValidationHandler validationChain;
+
+    public MusicStore() {
+        // Inicializa a cadeia de responsabilidade
+        // Ordem: Estoque -> Crédito -> Idade
+        this.validationChain = new StockValidator();
+        this.validationChain
+                .linkWith(new CreditValidator())
+                .linkWith(new AgeValidator());
+    }
 
     public void addMusic(Album album) {
         inventory.add(album);
@@ -80,6 +92,7 @@ public class MusicStore {
     }
 
     public void purchaseMusic(Customer customer, Album album) {
+        // Agora a validação é apenas uma chamada para a corrente
         if (validatePurchase(customer, album)) {
             double discount = calculateDiscount(album, customer.getType());
             double finalPrice = album.getPrice() - discount;
@@ -98,30 +111,13 @@ public class MusicStore {
                 }
             }
         } else {
-            System.out.println("Out of stock!");
+            System.out.println("Out of stock! (Or other validation error)");
         }
     }
 
+    // O método antigo foi substituído por esse delegador
     public boolean validatePurchase(Customer customer, Album album) {
-        // Check stock
-        if (album.getStock() <= 0) {
-            System.out.println("Validation failed: Out of stock");
-            return false;
-        }
-
-        // Check customer credit
-        if (customer.getCredit() < album.getPrice()) {
-            System.out.println("Validation failed: Insufficient credit");
-            return false;
-        }
-
-        // Check age restriction for explicit content
-        if (album.getAgeRestriction().equals(AgeRestriction.PARENTAL_ADVISORY) && customer.getDateOfBirth().isAfter(LocalDate.now().minusYears(18))) {
-            System.out.println("Validation failed: Age restriction");
-            return false;
-        }
-
-        return true;
+        return validationChain.validate(customer, album);
     }
 
     public List<Album> getInventory() {
