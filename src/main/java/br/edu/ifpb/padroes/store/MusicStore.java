@@ -1,12 +1,16 @@
 package br.edu.ifpb.padroes.store;
 
 import br.edu.ifpb.padroes.customer.Customer;
-import br.edu.ifpb.padroes.customer.CustomerType;
 import br.edu.ifpb.padroes.music.Album;
-import br.edu.ifpb.padroes.music.MediaType;
-import br.edu.ifpb.padroes.store.validators.*; // Importando os novos validadores
+import br.edu.ifpb.padroes.store.discount.CustomerDiscount;
+import br.edu.ifpb.padroes.store.discount.DiscountStrategy;
+import br.edu.ifpb.padroes.store.discount.PopPunkDiscount;
+import br.edu.ifpb.padroes.store.discount.VinylDiscount;
+import br.edu.ifpb.padroes.store.validators.AgeValidator;
+import br.edu.ifpb.padroes.store.validators.CreditValidator;
+import br.edu.ifpb.padroes.store.validators.PurchaseValidationHandler;
+import br.edu.ifpb.padroes.store.validators.StockValidator;
 
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -15,7 +19,7 @@ public class MusicStore {
     private List<Album> inventory = new ArrayList<>();
     private List<Customer> customers = new ArrayList<>();
 
-    // Campo pra segurar o início da corrente
+    // Campo para a cadeia de responsabilidade (Validação)
     private PurchaseValidationHandler validationChain;
 
     public MusicStore() {
@@ -68,33 +72,17 @@ public class MusicStore {
         return results;
     }
 
-    public double calculateDiscount(Album album, CustomerType customerType) {
-        double discount = 0;
-
-        if (customerType.equals(CustomerType.VIP)) {
-            discount = album.getPrice() * 0.20;
-        } else if (customerType.equals(CustomerType.PREMIUM)) {
-            discount = album.getPrice() * 0.15;
-        } else if (customerType.equals(CustomerType.REGULAR)) {
-            discount = album.getPrice() * 0.05;
-        }
-
-        // Additional discounts
-        if (album.getType().equals(MediaType.VINYL) && album.getReleaseDate().getYear() < 1980) {
-            discount += album.getPrice() * 0.10;
-        }
-
-        if (album.getGenre().equalsIgnoreCase("Pop Punk") && customerType.equals(CustomerType.VIP)) {
-            discount += album.getPrice() * 0.05;
-        }
-
-        return discount;
-    }
-
     public void purchaseMusic(Customer customer, Album album) {
-        // Agora a validação é apenas uma chamada para a corrente
+        // 1. Executa a Chain of Responsibility para validar a compra
         if (validatePurchase(customer, album)) {
-            double discount = calculateDiscount(album, customer.getType());
+            
+            // 2. Executa o Decorator para calcular o desconto
+            // Base (Regra do Cliente) -> Decorator (Vinil) -> Decorator (Pop Punk)
+            DiscountStrategy discountCalculator = new CustomerDiscount(); 
+            discountCalculator = new VinylDiscount(discountCalculator);   
+            discountCalculator = new PopPunkDiscount(discountCalculator); 
+            
+            double discount = discountCalculator.calculate(album, customer);
             double finalPrice = album.getPrice() - discount;
 
             System.out.println("Purchase: " + album.getFormattedName() + " by " + customer.getName());
@@ -105,17 +93,19 @@ public class MusicStore {
             album.decreaseStock();
             customer.addPurchase(album);
 
+            // (Opcional) Notificação - Futuro Observer Pattern
             for (Customer c : customers) {
                 if (c.isInterestedIn(album.getGenre()) && !c.equals(customer)) {
                     System.out.println("Notifying " + c.getName() + " about popular " + album.getGenre() + " purchase");
                 }
             }
         } else {
-            System.out.println("Out of stock! (Or other validation error)");
+            // Mensagem genérica caso a cadeia falhe silenciosamente (embora os validadores imprimam o erro)
+            System.out.println("Purchase failed due to validation error.");
         }
     }
 
-    // O método antigo foi substituído por esse delegador
+    // Delegador para a cadeia de validação
     public boolean validatePurchase(Customer customer, Album album) {
         return validationChain.validate(customer, album);
     }
@@ -123,5 +113,4 @@ public class MusicStore {
     public List<Album> getInventory() {
         return inventory;
     }
-
 }
