@@ -6,6 +6,7 @@ import br.edu.ifpb.padroes.store.discount.CustomerDiscount;
 import br.edu.ifpb.padroes.store.discount.DiscountStrategy;
 import br.edu.ifpb.padroes.store.discount.PopPunkDiscount;
 import br.edu.ifpb.padroes.store.discount.VinylDiscount;
+import br.edu.ifpb.padroes.store.notification.StoreObserver;
 import br.edu.ifpb.padroes.store.validators.AgeValidator;
 import br.edu.ifpb.padroes.store.validators.CreditValidator;
 import br.edu.ifpb.padroes.store.validators.PurchaseValidationHandler;
@@ -17,14 +18,13 @@ import java.util.List;
 public class MusicStore {
 
     private List<Album> inventory = new ArrayList<>();
+    // A lista de customers atua também como lista de Observers
     private List<Customer> customers = new ArrayList<>();
 
-    // Campo para a cadeia de responsabilidade (Validação)
     private PurchaseValidationHandler validationChain;
 
     public MusicStore() {
-        // Inicializa a cadeia de responsabilidade
-        // Ordem: Estoque -> Crédito -> Idade
+        // Inicializa a Chain of Responsibility (Validação)
         this.validationChain = new StockValidator();
         this.validationChain
                 .linkWith(new CreditValidator())
@@ -43,6 +43,7 @@ public class MusicStore {
     public List<Album> searchMusic(SearchType searchType, String searchTerm) {
         List<Album> results = new ArrayList<>();
 
+        // (Nota: Dá pra refatorar esse trecho com strategy pra busca tbm)
         if (searchType.equals(SearchType.TITLE)) {
             for (Album album : inventory) {
                 if (album.getTitle().toLowerCase().contains(searchTerm.toLowerCase())) {
@@ -73,11 +74,10 @@ public class MusicStore {
     }
 
     public void purchaseMusic(Customer customer, Album album) {
-        // 1. Executa a Chain of Responsibility para validar a compra
+        // 1. Validação (Chain of Responsibility)
         if (validatePurchase(customer, album)) {
             
-            // 2. Executa o Decorator para calcular o desconto
-            // Base (Regra do Cliente) -> Decorator (Vinil) -> Decorator (Pop Punk)
+            // 2. Cálculo de Desconto (Decorator)
             DiscountStrategy discountCalculator = new CustomerDiscount(); 
             discountCalculator = new VinylDiscount(discountCalculator);   
             discountCalculator = new PopPunkDiscount(discountCalculator); 
@@ -85,6 +85,7 @@ public class MusicStore {
             double discount = discountCalculator.calculate(album, customer);
             double finalPrice = album.getPrice() - discount;
 
+            // 3. Processamento da Transação
             System.out.println("Purchase: " + album.getFormattedName() + " by " + customer.getName());
             System.out.println("Original price: $" + album.getPrice());
             System.out.println("Discount: $" + discount);
@@ -93,21 +94,26 @@ public class MusicStore {
             album.decreaseStock();
             customer.addPurchase(album);
 
-            // (Opcional) Notificação - Futuro Observer Pattern
-            for (Customer c : customers) {
-                if (c.isInterestedIn(album.getGenre()) && !c.equals(customer)) {
-                    System.out.println("Notifying " + c.getName() + " about popular " + album.getGenre() + " purchase");
-                }
-            }
+            // 4. Notificação (Observer)
+            notifyObservers(album, customer);
+
         } else {
-            // Mensagem genérica caso a cadeia falhe silenciosamente (embora os validadores imprimam o erro)
             System.out.println("Purchase failed due to validation error.");
         }
     }
 
-    // Delegador para a cadeia de validação
-    public boolean validatePurchase(Customer customer, Album album) {
+    private boolean validatePurchase(Customer customer, Album album) {
         return validationChain.validate(customer, album);
+    }
+
+    // Método auxiliar do Observer
+    private void notifyObservers(Album album, Customer buyer) {
+        for (StoreObserver observer : customers) {
+            // Não notificamos quem está comprando
+            if (!observer.equals(buyer)) {
+                observer.update(album);
+            }
+        }
     }
 
     public List<Album> getInventory() {
