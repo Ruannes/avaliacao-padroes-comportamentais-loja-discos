@@ -1,12 +1,13 @@
 package br.edu.ifpb.padroes.customer;
 
 import br.edu.ifpb.padroes.music.Album;
+import br.edu.ifpb.padroes.store.notification.StoreObserver;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Customer {
+public class Customer implements StoreObserver {
 
     private String name;
     private List<Album> purchases = new ArrayList<>();
@@ -23,6 +24,15 @@ public class Customer {
         this.type = type;
         this.dateOfBirth = dateOfBirth;
     }
+
+    // --- Implementação do Pattern Observer ---
+    @Override
+    public void update(Album album) {
+        if (isInterestedIn(album.getGenre())) {
+            System.out.println("Notifying " + this.name + " about popular " + album.getGenre() + " purchase");
+        }
+    }
+    // -----------------------------------------
 
     public void addInterest(String genre) {
         interests.add(genre);
